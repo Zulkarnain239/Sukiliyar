@@ -1,4 +1,4 @@
--- Blox Range v2.8 [PART 1/2] | Fixed Instant Hit | True Godmode
+-- Blox Range v2.9 [PART 1/2] | Silent Aim | Server Godmode
 local newcclosure = newcclosure or function(f) return f end
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -16,24 +16,20 @@ local CFG = {
     GodMode = false,
     ESP = false, Chams = true, Names = false, Health = false, Lines = true, OnlyArmed = true,
     Aim = false, Part = "Head", FOV = 150, Smooth = 0.35, WallCheck = true, ShowFOV = true,
-    Magic = false, MagicFOV = 600, MagicLead = true, BulletSpeed = 500,
-    InstantHit = false, OneShot = false,
-    TeleKill = false, TeleAny = false, TeleHeight = 4, TeleDelay = 0.1,
+    InstantHit = false,
+    TeleKill = false, TeleAny = false, TeleHeight = 4, TeleDelay = 0.5,
     TeamCheck = false 
 }
 local BASE_FOV = math.rad(80)
 
 S.spy = false
-S.magicOn = false
-S.magicTarget = nil
-S.oneShotWindow = 0
-S.trackTargetHum = nil
 S.humanoidRef = nil
 S.desired = {}
 S.internalWrite = false
 S.teleTarget = nil
 S.teleNext = 0
 S.armed = {}
+S.originalCFrame = nil
 
 local function isEnemy(p)
     if p == LP then return false end
@@ -126,15 +122,6 @@ local function getNearestEnemyHead()
     return best
 end
 
-local function leadPosition(part, origin)
-    if not CFG.MagicLead then return part.Position end
-    local ok, vel = pcall(function() return part.AssemblyLinearVelocity end)
-    if not ok or not vel or vel.Magnitude < 0.5 then return part.Position end
-    local d = (part.Position - origin).Magnitude
-    local sp = math.max(CFG.BulletSpeed, 50)
-    return part.Position + vel * (d / sp)
-end
-
 local function trackHum()
     local ch = LP.Character
     S.humanoidRef = ch and ch:FindFirstChildOfClass("Humanoid") or nil
@@ -191,7 +178,7 @@ local title = Instance.new("TextLabel", main)
 title.Size = UDim2.new(1, -40, 0, 28)
 title.Position = UDim2.new(0, 8, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "Blox Range v2.8"
+title.Text = "Blox Range v2.9"
 title.TextColor3 = Color3.new(1, 1, 1)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -315,15 +302,8 @@ local function header(text)
     l.TextSize = 11
 end
 
-local logBox
-local logLines = {}
-local function log(s)
-    logLines[#logLines + 1] = tostring(s)
-    if logBox then logBox.Text = table.concat(logLines, "\n") end
-end
-
 header("MISC")
-makeToggle("Godmode (Bypass)", "GodMode")
+makeToggle("Godmode (Anti-Death)", "GodMode")
 
 header("HUMANOID")
 local humProps = {"WalkSpeed", "JumpPower", "JumpHeight", "HipHeight", "Health", "MaxHealth"}
@@ -394,38 +374,16 @@ end)
 makeToggle("Wall Check", "WallCheck")
 makeStepper(function() return "FOV: " .. CFG.FOV end, function(d) CFG.FOV = math.clamp(CFG.FOV + d * 20, 30, 800) end)
 makeToggle("FOV Circle", "ShowFOV", function(v) fovCircle.Visible = v end)
-makeToggle("Instant Hit", "InstantHit")
+makeToggle("Instant Hit (Silent Aim)", "InstantHit")
 
-header("MAGIC & TELEPORT")
-makeToggle("Magic Bullet", "Magic")
+header("TELEPORT KILL")
 makeToggle("Teleport to Head", "TeleKill")
 makeToggle("Target All Players", "TeleAny")
 makeStepper(function() return "Height: " .. CFG.TeleHeight end, function(d) CFG.TeleHeight = math.clamp(CFG.TeleHeight + d, 1, 20) end)
-makeStepper(function() return "Delay: " .. string.format("%.2f", CFG.TeleDelay) end, function(d) CFG.TeleDelay = math.clamp(math.floor((CFG.TeleDelay + d * 0.05) * 100 + 0.5) / 100, 0.05, 1) end)
-
-header("SPY / DEBUG")
-makeBtn("Spy Fire Remote: OFF", function(b)
-    S.spy = not S.spy
-    b.Text = "Spy: " .. (S.spy and "ON" or "OFF")
-    b.BackgroundColor3 = S.spy and ONC or OFFC
-end)
-logBox = Instance.new("TextBox", body)
-logBox.Size = UDim2.new(1, -4, 0, 100)
-logBox.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
-logBox.TextColor3 = Color3.fromRGB(180, 255, 180)
-logBox.Font = Enum.Font.Code
-logBox.TextSize = 11
-logBox.TextXAlignment = Enum.TextXAlignment.Left
-logBox.TextYAlignment = Enum.TextYAlignment.Top
-logBox.MultiLine = true
-logBox.ClearTextOnFocus = false
-logBox.TextWrapped = true
-logBox.Text = "Log..."
-Instance.new("UICorner", logBox).CornerRadius = UDim.new(0, 6)
-makeBtn("Copy Log", function() if setclipboard then setclipboard(table.concat(logLines, "\n")) log("(copied)") end end)
+makeStepper(function() return "Delay: " .. string.format("%.2f", CFG.TeleDelay) end, function(d) CFG.TeleDelay = math.clamp(math.floor((CFG.TeleDelay + d * 0.1) * 100 + 0.5) / 100, 0.1, 2) end)
 
 local esp = {}
--- Blox Range v2.8 [PART 2/2]
+-- Blox Range v2.9 [PART 2/2]
 
 local function updateESP()
     local vp = Camera.ViewportSize
@@ -508,32 +466,20 @@ local function updateESP()
     end
 end
 
--- HOOK __index (Client Blindness / Fake HP)
-if hookmetamethod and not S.indexHooked then
-    S.indexHooked = true
-    local old
-    old = hookmetamethod(game, "__index", newcclosure(function(self, key)
-        if CFG.GodMode and S.humanoidRef == self then
-            if key == "Health" then
-                return self.MaxHealth 
-            end
-        end
-        return old(self, key)
-    end))
-end
-
--- HOOK __namecall (Blokir Damage, Instant Hit FireRifle)
+-- HOOK __namecall: Server Godmode & Silent Aim (Instant Hit)
 if not S.hooked and hookmetamethod and getnamecallmethod then
     S.hooked = true
     local old
     old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
         local m = getnamecallmethod()
         
-        -- Godmode Server Bypass (Blokir TakeDamage & Destroy)
+        -- Godmode: Blokir TakeDamage dan SetStateEnabled(Dead)
         if CFG.GodMode and typeof(self) == "Instance" then
-            if self == S.humanoidRef or (LP.Character and self == LP.Character) then
-                if m == "TakeDamage" or m == "BreakJoints" or m == "Destroy" then
-                    return 
+            if self == S.humanoidRef then
+                if m == "TakeDamage" or m == "BreakJoints" then return end
+                if m == "SetStateEnabled" then
+                    local args = {...}
+                    if args[1] == Enum.HumanoidStateType.Dead then return end
                 end
             end
         end
@@ -541,25 +487,41 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
         if m == "FireServer" and typeof(self) == "Instance" then
             local args = table.pack(...)
             
-            -- INSTANT HIT (FireRifle & FirePistol) - Berdasarkan Log Format
+            -- Instant Hit (Silent Aim) - Camera Snap Bypass
             if CFG.InstantHit and (self.Name == "FireRifle" or self.Name == "FirePistol") then
-                local tgt = getTarget(CFG.MagicFOV, true)
+                local tgt = getTarget(CFG.FOV, true)
                 if tgt and tgt.Parent then
+                    -- Simpan CFrame asli
+                    if not S.originalCFrame then
+                        S.originalCFrame = Camera.CFrame
+                    end
+                    
+                    -- Paksa kamera melihat target (Bypass validasi server)
+                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, tgt.Position)
+                    
+                    -- Ubah arah peluru (X, Y, Z)
                     local origin = Vector3.new(args[1], args[2], args[3])
                     local dir = (tgt.Position - origin).Unit
                     
-                    -- Ganti arah X, Y, Z (Arg 4, 5, 6)
                     args[4] = dir.X
                     args[5] = dir.Y
                     args[6] = dir.Z
-                    
-                    -- Ganti arah kedua X, Y, Z (Arg 8, 9, 10)
                     args[8] = dir.X
                     args[9] = dir.Y
                     args[10] = dir.Z
                     
-                    -- Ubah Damage di argumen ke-11 menjadi 9999
-                    args[11] = 9999
+                    -- Tembak!
+                    local r = old(self, table.unpack(args, 1, args.n))
+                    
+                    -- Kembalikan kamera ke posisi semula (0.05 detik kemudian)
+                    task.delay(0.05, function()
+                        if S.originalCFrame then
+                            Camera.CFrame = S.originalCFrame
+                            S.originalCFrame = nil
+                        end
+                    end)
+                    
+                    return r
                 end
             end
             
@@ -570,9 +532,9 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
     end))
 end
 
--- HOOK __newindex (Blokir Drop HP & 1SK)
-if hookmetamethod and not S.oneshotHooked then
-    S.oneshotHooked = true
+-- HOOK __newindex: Paksa darah selalu MaxHealth
+if hookmetamethod and not S.indexHooked then
+    S.indexHooked = true
     local old
     old = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
         if CFG.GodMode and S.humanoidRef == self and key == "Health" and not S.internalWrite then
@@ -580,21 +542,19 @@ if hookmetamethod and not S.oneshotHooked then
                 return old(self, key, self.MaxHealth) 
             end
         end
-        
         return old(self, key, value)
     end))
 end
 
 -- Heartbeat Loop
 RunService.Heartbeat:Connect(function()
-    -- Memory System (Pemegang Senjata)
+    -- Memory System (Deteksi Pemegang Senjata)
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP then
             local ch = p.Character
             local hasTool = false
             if ch and ch:FindFirstChildOfClass("Tool") then hasTool = true end
             if not hasTool and p.Backpack and p.Backpack:FindFirstChildOfClass("Tool") then hasTool = true end
-            
             if hasTool then S.armed[p] = tick() end
         end
     end
@@ -602,25 +562,20 @@ RunService.Heartbeat:Connect(function()
     local hum = S.humanoidRef
     if hum and hum.Parent then
         if next(S.desired) then applyHumanoid() end
-        for name, box in pairs(humBoxes) do
-            if not box:IsFocused() then
-                local v = hum[name]
-                if v ~= nil then box.Text = tostring(math.floor(v * 100) / 100) end
-            end
-        end
         
+        -- Godmode Loop
         if CFG.GodMode then
-            local state = hum:GetState()
-            if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.FallingDown then
-                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
-            end
-            -- Paksa darah selalu penuh setiap frame
             if hum.Health < hum.MaxHealth then
                 pcall(function() hum.Health = hum.MaxHealth end)
+            end
+            local state = hum:GetState()
+            if state == Enum.HumanoidStateType.Dead then
+                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
             end
         end
     end
     
+    -- Teleport Logic (Berpindah ke musuh)
     if CFG.TeleKill then
         local myChar = LP.Character
         local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -651,11 +606,10 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Render Step (Aimbot, ESP, FOV)
+-- Render Step (Aimbot, ESP)
 RunService:BindToRenderStep("BR_Main", 10000, function()
     Camera = Workspace.CurrentCamera
     if not Camera then return end
-    S.camPos = Camera.CFrame.Position
     
     local curFov = math.rad(math.clamp(Camera.FieldOfView, 1, 120))
     local r = CFG.FOV * math.tan(BASE_FOV / 2) / math.tan(curFov / 2)
@@ -663,7 +617,7 @@ RunService:BindToRenderStep("BR_Main", 10000, function()
     
     if CFG.Aim then
         local t = getTarget(CFG.FOV)
-        if t then Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(S.camPos, t.Position), CFG.Smooth) end
+        if t then Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, t.Position), CFG.Smooth) end
     end
     
     updateESP()
@@ -686,4 +640,3 @@ G.BR_CLEANUP = function()
     dragConn:Disconnect()
     gui:Destroy()
 end
-log("v2.8 loaded. Fixed Instant Hit & Godmode.")
