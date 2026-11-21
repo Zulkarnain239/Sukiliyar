@@ -1,4 +1,4 @@
--- Blox Range v2.3 [PART 1/2] | Godmode & Fixed ESP
+-- Blox Range v2.4 [PART 1/2] | True Godmode
 local newcclosure = newcclosure or function(f) return f end
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -13,7 +13,7 @@ G.BR_S = G.BR_S or {}
 local S = G.BR_S
 
 local CFG = {
-    GodMode = false, -- FITUR BARU
+    GodMode = false,
     ESP = false, Chams = true, Names = false, Health = false, Lines = true,
     Aim = false, Part = "Head", FOV = 150, Smooth = 0.35, WallCheck = true, ShowFOV = true,
     Magic = false, MagicFOV = 600, MagicLead = true, BulletSpeed = 500,
@@ -190,7 +190,7 @@ local title = Instance.new("TextLabel", main)
 title.Size = UDim2.new(1, -40, 0, 28)
 title.Position = UDim2.new(0, 8, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "Blox Range v2.3"
+title.Text = "Blox Range v2.4"
 title.TextColor3 = Color3.new(1, 1, 1)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -322,7 +322,7 @@ local function log(s)
 end
 
 header("MISC")
-makeToggle("Godmode (Self)", "GodMode") -- FITUR BARU
+makeToggle("Godmode (Invincible)", "GodMode")
 
 header("HUMANOID")
 local humProps = {"WalkSpeed", "JumpPower", "JumpHeight", "HipHeight", "Health", "MaxHealth"}
@@ -431,7 +431,7 @@ Instance.new("UICorner", logBox).CornerRadius = UDim.new(0, 6)
 makeBtn("Copy Log", function() if setclipboard then setclipboard(table.concat(logLines, "\n")) log("(copied)") end end)
 
 local esp = {}
--- Blox Range v2.3 [PART 2/2]
+-- Blox Range v2.4 [PART 2/2]
 
 local function updateESP()
     local vp = Camera.ViewportSize
@@ -552,11 +552,20 @@ local function beginTracking(part)
     S.oneShotWindow = tick() + 3.0
 end
 
+-- Hook Namecall: Blokir Damage Godmode + Magic
 if not S.hooked and hookmetamethod and getnamecallmethod then
     S.hooked = true
     local old
     old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
         local m = getnamecallmethod()
+        
+        -- Godmode Total (Blokir TakeDamage & BreakJoints)
+        if CFG.GodMode and typeof(self) == "Instance" and self == S.humanoidRef then
+            if m == "TakeDamage" or m == "BreakJoints" then
+                return -- Tolak damage / hancur total
+            end
+        end
+        
         if m == "FireServer" and typeof(self) == "Instance" then
             local args = table.pack(...)
             if S.spy and S.spyFn then S.spyFn(self.Name, args) end
@@ -584,7 +593,7 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
     end))
 end
 
--- PERBAIKAN HOOK: Godmode + 1SK + Humanoid
+-- Hook Newindex: 1SK + Mencegah HP Drop
 if hookmetamethod and not S.oneshotHooked then
     S.oneshotHooked = true
     local old
@@ -596,7 +605,7 @@ if hookmetamethod and not S.oneshotHooked then
             end
         end
         
-        -- Godmode (Diri Sendiri)
+        -- Godmode (Diri Sendiri) - Mencegah drop darah
         if CFG.GodMode and S.humanoidRef == self and key == "Health" then
             if typeof(value) == "number" and value < S.humanoidRef.MaxHealth then
                 return old(self, key, S.humanoidRef.MaxHealth)
@@ -622,6 +631,17 @@ RunService.Heartbeat:Connect(function()
             if not box:IsFocused() then
                 local v = hum[name]
                 if v ~= nil then box.Text = tostring(math.floor(v * 100) / 100) end
+            end
+        end
+        
+        -- Godmode Aggressive Loop (Anti-Death & Anti-Fall)
+        if CFG.GodMode then
+            if hum.Health < hum.MaxHealth then
+                pcall(function() hum.Health = hum.MaxHealth end)
+            end
+            local state = hum:GetState()
+            if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.FallingDown then
+                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
             end
         end
     end
@@ -722,4 +742,4 @@ G.BR_CLEANUP = function()
     dragConn:Disconnect()
     gui:Destroy()
 end
-log("v2.3 loaded. Godmode Added.")
+log("v2.4 loaded. True Godmode Active.")
