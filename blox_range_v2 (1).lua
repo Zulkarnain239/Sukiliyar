@@ -1,5 +1,4 @@
--- Blox Range v2 [PART 1/2] | Delta Android | ESP | Aimbot | Magic | Track | 1SK | Humanoid Monitor
--- Gabungkan dengan PART 2 di file yang sama.
+-- Blox Range v2 [PART 1/2] | Delta Android
 local newcclosure = newcclosure or function(f) return f end
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
@@ -10,15 +9,16 @@ local Camera=Workspace.CurrentCamera
 local G=(getgenv and getgenv()) or _G
 if G.BR_CLEANUP then pcall(G.BR_CLEANUP) end
 G.BR_S=G.BR_S or {} local S=G.BR_S
-local CFG={ESP=false,Chams=true,Names=false,Health=false,Lines=true,Aim=false,Part="Head",FOV=150,Smooth=0.35,WallCheck=true,ShowFOV=true,Magic=false,MagicFOV=600,MagicLead=true,BulletSpeed=500,Track=false,OneShot=false,TrackSpeed=700,TrackKillRadius=8}
+local CFG={ESP=false,Chams=true,Names=false,Health=false,Lines=true,Aim=false,Part="Head",FOV=150,Smooth=0.35,WallCheck=true,ShowFOV=true,Magic=false,MagicFOV=600,MagicLead=true,BulletSpeed=500,Track=false,OneShot=false,TrackSpeed=700,TrackKillRadius=8,TeleKill=false,TeleAny=false,TeleHeight=4,TeleDelay=0.1}
 local BASE_FOV=math.rad(80)
 S.spy,S.magicOn,S.magicTarget=false,false,nil
-S.trackBullets=S.trackBullets or {} S.trackWindow=0 S.oneShotWindow=0
+S.trackBullets={} S.recentParts={} S.trackWindow=0 S.oneShotWindow=0
 S.trackTargetPart=nil S.trackTargetHum=nil
 S.humanoidRef=nil S.desired={} S.internalWrite=false
-
+S.teleTarget=nil S.teleNext=0
 local function isEnemy(p)
   if p==LP then return false end
+  if CFG.TeleAny then return true end
   if LP.Team then return p.Team~=nil and p.Team~=LP.Team end
   if p.Team then return true end
   return p.TeamColor~=LP.TeamColor
@@ -61,6 +61,25 @@ local function getTarget(px,unlim)
             if unlim then pass=ang<=math.rad(80) end
             if pass and (not bs or ang<bs) and visible(pt,ch) then best,bs=pt,ang end
           end
+        end
+      end
+    end
+  end
+  return best
+end
+local function getNearestEnemyHead(anyRange)
+  local myRoot=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+  local myPos=myRoot and myRoot.Position or Camera.CFrame.Position
+  local best,bd
+  for _,p in ipairs(Players:GetPlayers()) do
+    if p~=LP and (CFG.TeleAny or isEnemy(p)) then
+      local ch=p.Character
+      local h=ch and ch:FindFirstChildOfClass("Humanoid")
+      if h and h.Health>0 then
+        local head=ch:FindFirstChild("Head")
+        if head then
+          local d=(myPos-head.Position).Magnitude
+          if not bd or d<bd then best,bd=ch,d end
         end
       end
     end
@@ -111,7 +130,7 @@ Instance.new("UICorner",fovCircle).CornerRadius=UDim.new(1,0)
 local fs=Instance.new("UIStroke",fovCircle)
 fs.Color=Color3.new(1,1,1) fs.Thickness=1.5 fs.Transparency=0.4
 local main=Instance.new("Frame",gui)
-main.Size=UDim2.new(0,250,0,460) main.Position=UDim2.new(0,60,0,60)
+main.Size=UDim2.new(0,250,0,500) main.Position=UDim2.new(0,60,0,60)
 main.BackgroundColor3=Color3.fromRGB(25,25,30) main.BorderSizePixel=0
 Instance.new("UICorner",main).CornerRadius=UDim.new(0,8)
 local title=Instance.new("TextLabel",main)
@@ -132,7 +151,7 @@ Instance.new("UIListLayout",body).Padding=UDim.new(0,5)
 local minimized=false
 mini.MouseButton1Click:Connect(function()
   minimized=not minimized body.Visible=not minimized
-  main.Size=minimized and UDim2.new(0,250,0,28) or UDim2.new(0,250,0,460)
+  main.Size=minimized and UDim2.new(0,250,0,28) or UDim2.new(0,250,0,500)
   mini.Text=minimized and "+" or "-"
 end)
 local dragging,dragStart,startPos
@@ -205,7 +224,6 @@ local function listNames(inst,max)
   return table.concat(t,", ")
 end
 
--- HUMANOID section
 header("HUMANOID")
 local humProps={"WalkSpeed","JumpPower","JumpHeight","HipHeight","Health","MaxHealth"}
 local humBoxes={}
@@ -239,16 +257,12 @@ makeBtn("Reset Humanoid",function()
   S.desired={}
   for _,b in pairs(humBoxes) do if not b:IsFocused() then b.Text="" end end
 end)
-
--- ESP section
 header("ESP")
 makeToggle("ESP Enemy","ESP")
 makeToggle("Chams (Highlight)","Chams")
 makeToggle("Line","Lines")
 makeToggle("Nama + Jarak","Names")
 makeToggle("Health","Health")
-
--- Aimbot section
 header("AIMBOT")
 makeToggle("Aimbot","Aim")
 makeBtn("Target: Head",function(b)
@@ -263,8 +277,6 @@ makeStepper(function() return "Speed: "..string.format("%.2f",CFG.Smooth) end,fu
   CFG.Smooth=math.clamp(math.floor((CFG.Smooth+d*0.05)*100+0.5)/100,0.05,1)
 end)
 makeToggle("FOV Circle","ShowFOV",function(v) fovCircle.Visible=v end)
-
--- Magic Bullet section
 header("MAGIC BULLET")
 makeToggle("Magic Bullet","Magic")
 makeStepper(function() return "Magic FOV: "..CFG.MagicFOV end,function(d)
@@ -274,8 +286,6 @@ makeToggle("Lead Compensation","MagicLead")
 makeStepper(function() return "Bullet Speed: "..CFG.BulletSpeed end,function(d)
   CFG.BulletSpeed=math.clamp(CFG.BulletSpeed+d*50,100,2000)
 end)
-
--- Bullet Track section
 header("BULLET TRACK + 1SK")
 makeToggle("Bullet Track","Track")
 makeToggle("1 Shot 1 Kill","OneShot")
@@ -285,14 +295,21 @@ end)
 makeStepper(function() return "Kill Radius: "..CFG.TrackKillRadius end,function(d)
   CFG.TrackKillRadius=math.clamp(CFG.TrackKillRadius+d,2,30)
 end)
-
--- Spy / Debug section
+header("TELEPORT KILL")
+makeToggle("Teleport Kill","TeleKill")
+makeToggle("Target All Players","TeleAny")
+makeStepper(function() return "Height: "..CFG.TeleHeight end,function(d)
+  CFG.TeleHeight=math.clamp(CFG.TeleHeight+d,1,20)
+end)
+makeStepper(function() return "Delay: "..string.format("%.2f",CFG.TeleDelay) end,function(d)
+  CFG.TeleDelay=math.clamp(math.floor((CFG.TeleDelay+d*0.05)*100+0.5)/100,0.05,1)
+end)
 header("SPY / DEBUG")
 makeBtn("Spy Fire Remote: OFF",function(b)
   S.spy=not S.spy
   b.Text="Spy Fire Remote: "..(S.spy and "ON" or "OFF")
   b.BackgroundColor3=S.spy and ONC or OFFC
-  if S.spy then log("Spy ON: tembak senjata, argumen FireServer akan dicatat.") end
+  if S.spy then log("Spy ON.") end
 end)
 logBox=Instance.new("TextBox",body)
 logBox.Size=UDim2.new(1,-4,0,100) logBox.BackgroundColor3=Color3.fromRGB(15,15,18)
@@ -312,35 +329,28 @@ makeBtn("Dump",function()
   log("Dump done.")
 end)
 makeBtn("Probe Camera (3 dtk)",function()
-  logLines={} log("Scope sekarang! Probe jalan 3 detik lagi...")
+  logLines={} log("Scope sekarang...")
   task.delay(3,function()
     logLines={}
     local c=Workspace.CurrentCamera
     log("CamType: "..tostring(c.CameraType).." | FOV "..string.format("%.1f",c.FieldOfView))
     log("Subject: "..tostring(c.CameraSubject))
-    log("Same cam obj: "..tostring(c==Camera))
     local ps=LP:FindFirstChild("PlayerScripts")
     log("PlayerScripts: "..(ps and listNames(ps,30) or "none"))
-    log("PlayerGui: "..listNames(LP.PlayerGui,40))
     local tool=LP.Character and LP.Character:FindFirstChildOfClass("Tool")
     log("Tool: "..tostring(tool))
     if tool then
       for k,v in pairs(tool:GetAttributes()) do log("  attr "..k.."="..tostring(v)) end
       log("  children: "..listNames(tool,20))
     end
-    if LP.Character then
-      for k,v in pairs(LP.Character:GetAttributes()) do log("  charattr "..k.."="..tostring(v)) end
-    end
     log("Probe done.")
   end)
 end)
 makeBtn("Copy Log",function()
-  if setclipboard then
-    setclipboard(table.concat(logLines,"\n")) log("(copied)")
-  else log("setclipboard tidak ada, select text manual") end
+  if setclipboard then setclipboard(table.concat(logLines,"\n")) log("(copied)")
+  else log("setclipboard tidak ada") end
 end)
 
--- ESP functions
 local esp={}
 local function clearESP(p)
   local e=esp[p]
@@ -393,7 +403,6 @@ local function updateESP()
   end
 end
 
--- Magic rewrite + spy format + tracking helpers
 local fireNames={FireRifle=true,FirePistol=true,FireSniper=true,FireLMG=true,FireRocket=true}
 S.rewrite=function(args,tgt,origin)
   local tpos=leadPosition(tgt,origin) local dir=(tpos-origin).Unit
@@ -434,20 +443,65 @@ S.spyFn=function(name,args)
     log(name.."("..table.concat(t,", ")..")")
   end)
 end
+-- Blox Range v2 [PART 2/2] — paste di bawah PART 1, SATU FILE.
+
+-- ══════ RECENT PARTS TRACKER (fix bullet client-prediction) ══════
+local function noteRecent(inst)
+  local part
+  if inst:IsA("BasePart") then part=inst
+  elseif inst:IsA("Model") then part=inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart") end
+  if not part or not part:IsA("BasePart") then return end
+  S.recentParts[#S.recentParts+1]={part=part,time=tick()}
+end
+S.recConn=Workspace.DescendantAdded:Connect(noteRecent)
+
+-- ══════ PROJECTILE SCAN (dipanggil setelah FireServer) ══════
+local function scanProjectiles(expectedTarget)
+  if not expectedTarget or not expectedTarget.Parent then return end
+  local now=tick()
+  for i=#S.recentParts,1,-1 do
+    local rec=S.recentParts[i]
+    local part=rec.part
+    if not part or not part.Parent then
+      table.remove(S.recentParts,i)
+    else
+      local age=now-rec.time
+      if age<=1.5 and part~=expectedTarget and part.Size.Magnitude<50 and part.Size.Magnitude>0.1 then
+        -- skip part milik karakter
+        local isChar=false
+        for _,p in ipairs(Players:GetPlayers()) do
+          if p.Character and part:IsDescendantOf(p.Character) then isChar=true break end
+        end
+        if not isChar then
+          local dup=false
+          for _,tb in ipairs(S.trackBullets) do if tb.part==part then dup=true break end end
+          if not dup then
+            S.trackBullets[#S.trackBullets+1]={part=part,target=expectedTarget,created=tick(),speed=CFG.TrackSpeed,anchored=part.Anchored}
+            log("Track: "..part.Name.." size="..string.format("%.1f",part.Size.Magnitude).." age="..string.format("%.2f",age))
+          end
+        end
+      end
+    end
+  end
+end
+
 local function beginTracking(part)
   if not part then return end
   S.trackTargetPart=part
   S.trackTargetHum=part.Parent and part.Parent:FindFirstChildOfClass("Humanoid")
   S.trackWindow=tick()+1.5 S.oneShotWindow=tick()+3.0
+  local et=part
+  scanProjectiles(et)
+  task.delay(0.15,function() scanProjectiles(et) end)
+  task.delay(0.4,function() scanProjectiles(et) end)
 end
--- Blox Range v2 [PART 2/2] — paste di bawah PART 1, JANGAN di file terpisah.
 
--- Hook __namecall (FireServer) — Magic + Track trigger
+-- ══════ HOOK __namecall (FireServer) ══════
 if not S.hooked and hookmetamethod and getnamecallmethod then
   S.hooked=true local old
   old=hookmetamethod(game,"__namecall",newcclosure(function(self,...)
     local m=getnamecallmethod()
-    if m=="FireServer" and typeof(self)=="Instance" and fireNames[self.Name] then
+    if m=="FireServer" and typeof(self)=="Instance" and (fireNames[self.Name] or CFG.Track or CFG.OneShot) then
       local args=table.pack(...)
       if S.spy and S.spyFn then S.spyFn(self.Name,args) end
       local tgt=S.magicOn and S.magicTarget
@@ -461,8 +515,8 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
         end
       end
       if (CFG.Track or CFG.OneShot) and not tgt then
-        local auto=getTarget(CFG.MagicFOV,true)
-        if auto and auto.Parent then beginTracking(auto) end
+        local nearestHead=getNearestEnemyHead()
+        if nearestHead and nearestHead.Parent then beginTracking(nearestHead) end
       end
       if setnamecallmethod then setnamecallmethod(m) end
       return old(self,...)
@@ -470,10 +524,10 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
     return old(self,...)
   end))
 elseif not S.hooked then
-  log("Executor tidak support hookmetamethod: Magic/Track/1SK tidak bisa jalan.")
+  log("Executor tidak support hookmetamethod!")
 end
 
--- Hook __newindex — 1SK + Humanoid Monitor enforcement
+-- ══════ HOOK __newindex (1SK + Humanoid Monitor) ══════
 if hookmetamethod and not S.oneshotHooked then
   S.oneshotHooked=true local old
   old=hookmetamethod(game,"__newindex",newcclosure(function(self,key,value)
@@ -491,20 +545,9 @@ if hookmetamethod and not S.oneshotHooked then
   end))
 end
 
--- Detect projectile for Bullet Track
-workspace.DescendantAdded:Connect(function(inst)
-  if not CFG.Track then return end
-  if tick()>(S.trackWindow or 0) then return end
-  if not inst:IsA("BasePart") then return end
-  if inst.Anchored then return end
-  if inst.Size.Magnitude>12 then return end
-  if not S.trackTargetPart or not S.trackTargetPart.Parent then return end
-  S.trackBullets[#S.trackBullets+1]={part=inst,target=S.trackTargetPart,created=tick(),speed=CFG.TrackSpeed}
-  log("Track: "..inst.Name.." ("..inst.ClassName..")")
-end)
-
--- Heartbeat: Humanoid Monitor + Bullet Track homing
+-- ══════ HEARTBEAT: Humanoid + Bullet Homing + Teleport ══════
 RunService.Heartbeat:Connect(function()
+  -- Humanoid Monitor
   local hum=S.humanoidRef
   if hum and hum.Parent then
     if next(S.desired) then applyHumanoid() end
@@ -515,31 +558,86 @@ RunService.Heartbeat:Connect(function()
       end
     end
   end
-  if #S.trackBullets==0 then return end
-  local now=tick()
-  for i=#S.trackBullets,1,-1 do
-    local tb=S.trackBullets[i] local part,target=tb.part,tb.target
-    local valid=part and part.Parent and target and target.Parent and (now-tb.created)<5
-    if not valid then table.remove(S.trackBullets,i)
-    else
-      local lead=leadPosition(target,part.Position) local delta=lead-part.Position
-      if delta.Magnitude<CFG.TrackKillRadius then
-        if CFG.OneShot and S.trackTargetHum and S.trackTargetHum.Health>0 then
-          pcall(function() S.trackTargetHum.Health=0 end)
-        end
+
+  -- Periodic scan jika track window masih terbuka
+  if CFG.Track and S.trackTargetPart and S.trackTargetPart.Parent and tick()<(S.trackWindow or 0) and #S.trackBullets==0 then
+    scanProjectiles(S.trackTargetPart)
+  end
+
+  -- Bullet homing
+  if #S.trackBullets>0 then
+    local now=tick()
+    for i=#S.trackBullets,1,-1 do
+      local tb=S.trackBullets[i] local part,target=tb.part,tb.target
+      local valid=part and part.Parent and target and target.Parent and (now-tb.created)<5
+      if not valid then
         table.remove(S.trackBullets,i)
       else
-        local step=math.min(delta.Magnitude,tb.speed*(1/60))
-        pcall(function()
-          part.CFrame=CFrame.lookAt(part.Position+delta.Unit*step,lead)
-          part.AssemblyLinearVelocity=delta.Unit*tb.speed
-        end)
+        local lead=leadPosition(target,part.Position) local delta=lead-part.Position
+        if delta.Magnitude<CFG.TrackKillRadius then
+          if CFG.OneShot and S.trackTargetHum and S.trackTargetHum.Health>0 then
+            pcall(function() S.trackTargetHum.Health=0 end)
+          end
+          table.remove(S.trackBullets,i)
+        else
+          local step=math.min(delta.Magnitude,tb.speed*0.0167)
+          pcall(function()
+            part.CFrame=CFrame.lookAt(part.Position+delta.Unit*step,lead)
+            if not tb.anchored then
+              part.AssemblyLinearVelocity=delta.Unit*tb.speed
+            end
+          end)
+        end
       end
     end
   end
+
+  -- ══════ TELEPORT KILL ══════
+  if CFG.TeleKill then
+    local myChar=LP.Character
+    local myRoot=myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local myHum=myChar and myChar:FindFirstChildOfClass("Humanoid")
+    if not (myChar and myRoot and myHum and myHum.Health>0) then
+      S.teleTarget=nil
+      return
+    end
+
+    -- Validasi target
+    local tgt=S.teleTarget
+    local tgtValid=false
+    if tgt and tgt.Parent then
+      local h=tgt:FindFirstChildOfClass("Humanoid")
+      local head=tgt:FindFirstChild("Head")
+      if h and h.Health>0 and head then tgtValid=true end
+    end
+
+    if not tgtValid then
+      -- Cari target baru (nearest)
+      local next_=getNearestEnemyHead()
+      S.teleTarget=next_
+      if next_ then
+        log("Teleport → "..next_.Parent.Name)
+      end
+    end
+
+    -- Eksekusi teleport
+    if S.teleTarget and tick()>=(S.teleNext or 0) then
+      local head=S.teleTarget:FindFirstChild("Head")
+      if head then
+        local desired=CFrame.new(head.Position+Vector3.new(0,CFG.TeleHeight,0))
+        local ok=pcall(function() myChar:PivotTo(desired) end)
+        if not ok then
+          pcall(function() myRoot.CFrame=desired end)
+        end
+        S.teleNext=tick()+CFG.TeleDelay
+      end
+    end
+  else
+    S.teleTarget=nil
+  end
 end)
 
--- Main render loop
+-- ══════ MAIN RENDER LOOP ══════
 RunService:BindToRenderStep("BR_Main",10000,function()
   Camera=Workspace.CurrentCamera
   if not Camera then return end
@@ -558,8 +656,7 @@ end)
 
 local rmConn=Players.PlayerRemoving:Connect(clearESP)
 LP.CharacterAdded:Connect(function()
-  S.desired={}
-  S.humanoidRef=nil
+  S.desired={} S.humanoidRef=nil S.teleTarget=nil S.teleNext=0
   task.wait(0.3)
   trackHum()
   for _,b in pairs(humBoxes) do if not b:IsFocused() then b.Text="" end end
@@ -568,10 +665,14 @@ trackHum()
 
 G.BR_CLEANUP=function()
   S.magicOn,S.spy,S.magicTarget=false,false,nil
-  S.trackBullets={} S.trackTargetHum,S.trackTargetPart=nil,nil
-  S.trackWindow,S.oneShotWindow=0,0 CFG.Track,CFG.OneShot=false,false
+  S.trackBullets={} S.recentParts={}
+  S.trackTargetHum,S.trackTargetPart=nil,nil
+  S.trackWindow,S.oneShotWindow=0,0
+  S.teleTarget=nil S.teleNext=0
+  CFG.Track,CFG.OneShot,CFG.TeleKill=false,false,false
   S.humanoidRef=nil S.desired={} S.internalWrite=false
+  if S.recConn then S.recConn:Disconnect() end
   pcall(function() RunService:UnbindFromRenderStep("BR_Main") end)
   rmConn:Disconnect() dragConn:Disconnect() gui:Destroy()
 end
-log("v2 loaded. Humanoid Monitor + Bullet Track + 1SK siap.")
+log("v2 loaded. Bullet Track di-relogic. Teleport Kill aktif di menu.")
