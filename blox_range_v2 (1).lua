@@ -1,6 +1,4 @@
--- Blox Range v2.1 [PART 1/2] | Anti-Lag ESP | Teleport Kill
--- Paste Part 2 tepat di bawah Part 1
-
+-- Blox Range v2.3 [PART 1/2] | Godmode & Fixed ESP
 local newcclosure = newcclosure or function(f) return f end
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -15,11 +13,13 @@ G.BR_S = G.BR_S or {}
 local S = G.BR_S
 
 local CFG = {
+    GodMode = false, -- FITUR BARU
     ESP = false, Chams = true, Names = false, Health = false, Lines = true,
     Aim = false, Part = "Head", FOV = 150, Smooth = 0.35, WallCheck = true, ShowFOV = true,
     Magic = false, MagicFOV = 600, MagicLead = true, BulletSpeed = 500,
     Track = false, OneShot = false, TrackSpeed = 700, TrackKillRadius = 8,
-    TeleKill = false, TeleAny = false, TeleHeight = 4, TeleDelay = 0.1
+    TeleKill = false, TeleAny = false, TeleHeight = 4, TeleDelay = 0.1,
+    TeamCheck = false 
 }
 local BASE_FOV = math.rad(80)
 
@@ -41,9 +41,11 @@ S.teleNext = 0
 local function isEnemy(p)
     if p == LP then return false end
     if CFG.TeleAny then return true end
-    if LP.Team then return p.Team ~= nil and p.Team ~= LP.Team end
-    if p.Team then return true end
-    return p.TeamColor ~= LP.TeamColor
+    if CFG.TeamCheck then
+        if LP.Team and p.Team then return LP.Team ~= p.Team end
+        return LP.TeamColor ~= p.TeamColor
+    end
+    return true
 end
 
 local function alive(char)
@@ -155,7 +157,6 @@ local function applyHumanoid()
     S.internalWrite = false
 end
 
--- GUI Setup
 local gui = Instance.new("ScreenGui")
 gui.Name = "BR_Gui"
 gui.ResetOnSpawn = false
@@ -189,7 +190,7 @@ local title = Instance.new("TextLabel", main)
 title.Size = UDim2.new(1, -40, 0, 28)
 title.Position = UDim2.new(0, 8, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "Blox Range v2.1"
+title.Text = "Blox Range v2.3"
 title.TextColor3 = Color3.new(1, 1, 1)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -320,7 +321,9 @@ local function log(s)
     if logBox then logBox.Text = table.concat(logLines, "\n") end
 end
 
--- Populate GUI
+header("MISC")
+makeToggle("Godmode (Self)", "GodMode") -- FITUR BARU
+
 header("HUMANOID")
 local humProps = {"WalkSpeed", "JumpPower", "JumpHeight", "HipHeight", "Health", "MaxHealth"}
 local humBoxes = {}
@@ -378,6 +381,7 @@ makeToggle("Chams (Highlight)", "Chams")
 makeToggle("Line", "Lines")
 makeToggle("Nama + Jarak", "Names")
 makeToggle("Health", "Health")
+makeToggle("Team Check", "TeamCheck")
 
 header("AIMBOT")
 makeToggle("Aimbot", "Aim")
@@ -427,7 +431,7 @@ Instance.new("UICorner", logBox).CornerRadius = UDim.new(0, 6)
 makeBtn("Copy Log", function() if setclipboard then setclipboard(table.concat(logLines, "\n")) log("(copied)") end end)
 
 local esp = {}
--- Blox Range v2.1 [PART 2/2]
+-- Blox Range v2.3 [PART 2/2]
 
 local function updateESP()
     local vp = Camera.ViewportSize
@@ -494,7 +498,6 @@ local function updateESP()
                     e.ln.Visible = false
                 end
             else
-                -- Anti-Lag: Sembunyikan ESP tanpa menghancurkannya (jika musuh mati/lag)
                 e.hl.Enabled = false
                 e.bb.Enabled = false
                 e.ln.Visible = false
@@ -549,7 +552,6 @@ local function beginTracking(part)
     S.oneShotWindow = tick() + 3.0
 end
 
--- Hook Namecall (Magic & Trigger Track)
 if not S.hooked and hookmetamethod and getnamecallmethod then
     S.hooked = true
     local old
@@ -582,26 +584,36 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
     end))
 end
 
--- Hook Newindex (1SK & Humanoid)
+-- PERBAIKAN HOOK: Godmode + 1SK + Humanoid
 if hookmetamethod and not S.oneshotHooked then
     S.oneshotHooked = true
     local old
     old = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
+        -- 1 Shot 1 Kill (Musuh)
         if CFG.OneShot and S.trackTargetHum == self and key == "Health" then
             if typeof(value) == "number" and value > 0 and tick() < (S.oneShotWindow or 0) then
                 return old(self, key, 0)
             end
         end
+        
+        -- Godmode (Diri Sendiri)
+        if CFG.GodMode and S.humanoidRef == self and key == "Health" then
+            if typeof(value) == "number" and value < S.humanoidRef.MaxHealth then
+                return old(self, key, S.humanoidRef.MaxHealth)
+            end
+        end
+        
+        -- Humanoid Monitor (Diri Sendiri)
         if not S.internalWrite and S.humanoidRef == self and S.desired[key] ~= nil then
             if not (key == "Health" and typeof(value) == "number" and value <= 0) then
                 return old(self, key, S.desired[key])
             end
         end
+        
         return old(self, key, value)
     end))
 end
 
--- Heartbeat Loop (Teleport, Homing, Humanoid)
 RunService.Heartbeat:Connect(function()
     local hum = S.humanoidRef
     if hum and hum.Parent then
@@ -614,7 +626,6 @@ RunService.Heartbeat:Connect(function()
         end
     end
     
-    -- Homing Projectiles
     if #S.trackBullets > 0 then
         local now = tick()
         for i = #S.trackBullets, 1, -1 do
@@ -641,29 +652,21 @@ RunService.Heartbeat:Connect(function()
         end
     end
     
-    -- Teleport Kill Logic
     if CFG.TeleKill then
         local myChar = LP.Character
         local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
         local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
-        
-        if not (myChar and myRoot and myHum and myHum.Health > 0) then
-            S.teleTarget = nil
-            return
-        end
+        if not (myChar and myRoot and myHum and myHum.Health > 0) then S.teleTarget = nil return end
         
         local tgt = S.teleTarget
         local tgtValid = false
-        
         if tgt and tgt.Parent then
             local h = tgt:FindFirstChildOfClass("Humanoid")
             local head = tgt:FindFirstChild("Head")
             if h and h.Health > 0 and head then tgtValid = true end
         end
         
-        if not tgtValid then
-            S.teleTarget = getNearestEnemyHead()
-        end
+        if not tgtValid then S.teleTarget = getNearestEnemyHead() end
         
         if S.teleTarget and tick() >= (S.teleNext or 0) then
             local head = S.teleTarget:FindFirstChild("Head")
@@ -679,7 +682,6 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Render Step (Aimbot & ESP)
 RunService:BindToRenderStep("BR_Main", 10000, function()
     Camera = Workspace.CurrentCamera
     if not Camera then return end
@@ -691,9 +693,7 @@ RunService:BindToRenderStep("BR_Main", 10000, function()
     
     if CFG.Aim then
         local t = getTarget(CFG.FOV)
-        if t then
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(S.camPos, t.Position), CFG.Smooth)
-        end
+        if t then Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(S.camPos, t.Position), CFG.Smooth) end
     end
     
     S.magicOn = CFG.Magic
@@ -712,7 +712,6 @@ LP.CharacterAdded:Connect(function()
         if not b:IsFocused() then b.Text = "" end
     end
 end)
-
 trackHum()
 
 G.BR_CLEANUP = function()
@@ -723,5 +722,4 @@ G.BR_CLEANUP = function()
     dragConn:Disconnect()
     gui:Destroy()
 end
-
-log("v2.1 loaded. Anti-Lag & Teleport Ready.")
+log("v2.3 loaded. Godmode Added.")
