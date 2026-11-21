@@ -1,4 +1,6 @@
--- Blox Range v2 | Delta Android | ESP | Aimbot | Magic | Track | 1SK | Spy
+-- Blox Range v2 [PART 1/2] | Delta Android | ESP | Aimbot | Magic | Track | 1SK | Humanoid Monitor
+-- Gabungkan dengan PART 2 di file yang sama.
+local newcclosure = newcclosure or function(f) return f end
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local UIS=game:GetService("UserInputService")
@@ -13,6 +15,8 @@ local BASE_FOV=math.rad(80)
 S.spy,S.magicOn,S.magicTarget=false,false,nil
 S.trackBullets=S.trackBullets or {} S.trackWindow=0 S.oneShotWindow=0
 S.trackTargetPart=nil S.trackTargetHum=nil
+S.humanoidRef=nil S.desired={} S.internalWrite=false
+
 local function isEnemy(p)
   if p==LP then return false end
   if LP.Team then return p.Team~=nil and p.Team~=LP.Team end
@@ -71,6 +75,28 @@ local function leadPosition(part,origin)
   local sp=math.max(CFG.BulletSpeed,50)
   return part.Position+vel*(d/sp)
 end
+local function trackHum()
+  local ch=LP.Character
+  S.humanoidRef=ch and ch:FindFirstChildOfClass("Humanoid") or nil
+end
+local function applyHumanoid()
+  local hum=S.humanoidRef
+  if not hum or not hum.Parent then return end
+  S.internalWrite=true
+  if S.desired.MaxHealth then pcall(function() hum.MaxHealth=S.desired.MaxHealth end) end
+  if S.desired.Health then
+    if S.desired.Health>hum.MaxHealth then pcall(function() hum.MaxHealth=S.desired.Health end) end
+    pcall(function() hum.Health=S.desired.Health end)
+  end
+  if S.desired.UseJumpPower~=nil then pcall(function() hum.UseJumpPower=S.desired.UseJumpPower end) end
+  for k,v in pairs(S.desired) do
+    if k~="Health" and k~="MaxHealth" and k~="UseJumpPower" then
+      pcall(function() hum[k]=v end)
+    end
+  end
+  S.internalWrite=false
+end
+
 local gui=Instance.new("ScreenGui")
 gui.Name="BR_Gui" gui.ResetOnSpawn=false gui.IgnoreGuiInset=true gui.DisplayOrder=999
 local okp=pcall(function() gui.Parent=(gethui and gethui()) or game:GetService("CoreGui") end)
@@ -178,12 +204,51 @@ local function listNames(inst,max)
   end
   return table.concat(t,", ")
 end
+
+-- HUMANOID section
+header("HUMANOID")
+local humProps={"WalkSpeed","JumpPower","JumpHeight","HipHeight","Health","MaxHealth"}
+local humBoxes={}
+for _,name in ipairs(humProps) do
+  local row=Instance.new("Frame",body)
+  row.Size=UDim2.new(1,-4,0,26) row.BackgroundTransparency=1
+  local lbl=Instance.new("TextLabel",row)
+  lbl.Size=UDim2.new(0,95,1,0) lbl.BackgroundTransparency=1
+  lbl.Text=name lbl.TextColor3=Color3.fromRGB(200,200,200)
+  lbl.Font=Enum.Font.Gotham lbl.TextSize=12 lbl.TextXAlignment=Enum.TextXAlignment.Left
+  local box=Instance.new("TextBox",row)
+  box.Position=UDim2.new(0,100,0,1) box.Size=UDim2.new(1,-100,1,-2)
+  box.BackgroundColor3=Color3.fromRGB(45,45,55) box.TextColor3=Color3.new(1,1,1)
+  box.Font=Enum.Font.Gotham box.TextSize=12 box.ClearTextOnFocus=false
+  Instance.new("UICorner",box).CornerRadius=UDim.new(0,6)
+  humBoxes[name]=box
+  box.FocusLost:Connect(function(enter)
+    if not enter then return end
+    local n=tonumber(box.Text) if not n then return end
+    if name=="JumpPower" then
+      S.desired.JumpPower=n S.desired.JumpHeight=nil S.desired.UseJumpPower=true
+    elseif name=="JumpHeight" then
+      S.desired.JumpHeight=n S.desired.JumpPower=nil S.desired.UseJumpPower=false
+    else
+      S.desired[name]=n
+    end
+    applyHumanoid()
+  end)
+end
+makeBtn("Reset Humanoid",function()
+  S.desired={}
+  for _,b in pairs(humBoxes) do if not b:IsFocused() then b.Text="" end end
+end)
+
+-- ESP section
 header("ESP")
 makeToggle("ESP Enemy","ESP")
 makeToggle("Chams (Highlight)","Chams")
 makeToggle("Line","Lines")
 makeToggle("Nama + Jarak","Names")
 makeToggle("Health","Health")
+
+-- Aimbot section
 header("AIMBOT")
 makeToggle("Aimbot","Aim")
 makeBtn("Target: Head",function(b)
@@ -198,6 +263,8 @@ makeStepper(function() return "Speed: "..string.format("%.2f",CFG.Smooth) end,fu
   CFG.Smooth=math.clamp(math.floor((CFG.Smooth+d*0.05)*100+0.5)/100,0.05,1)
 end)
 makeToggle("FOV Circle","ShowFOV",function(v) fovCircle.Visible=v end)
+
+-- Magic Bullet section
 header("MAGIC BULLET")
 makeToggle("Magic Bullet","Magic")
 makeStepper(function() return "Magic FOV: "..CFG.MagicFOV end,function(d)
@@ -207,6 +274,8 @@ makeToggle("Lead Compensation","MagicLead")
 makeStepper(function() return "Bullet Speed: "..CFG.BulletSpeed end,function(d)
   CFG.BulletSpeed=math.clamp(CFG.BulletSpeed+d*50,100,2000)
 end)
+
+-- Bullet Track section
 header("BULLET TRACK + 1SK")
 makeToggle("Bullet Track","Track")
 makeToggle("1 Shot 1 Kill","OneShot")
@@ -216,6 +285,8 @@ end)
 makeStepper(function() return "Kill Radius: "..CFG.TrackKillRadius end,function(d)
   CFG.TrackKillRadius=math.clamp(CFG.TrackKillRadius+d,2,30)
 end)
+
+-- Spy / Debug section
 header("SPY / DEBUG")
 makeBtn("Spy Fire Remote: OFF",function(b)
   S.spy=not S.spy
@@ -266,8 +337,10 @@ end)
 makeBtn("Copy Log",function()
   if setclipboard then
     setclipboard(table.concat(logLines,"\n")) log("(copied)")
-  else log("setclipboard tidak ada, select teks manual") end
+  else log("setclipboard tidak ada, select text manual") end
 end)
+
+-- ESP functions
 local esp={}
 local function clearESP(p)
   local e=esp[p]
@@ -319,6 +392,8 @@ local function updateESP()
     else clearESP(p) end
   end
 end
+
+-- Magic rewrite + spy format + tracking helpers
 local fireNames={FireRifle=true,FirePistol=true,FireSniper=true,FireLMG=true,FireRocket=true}
 S.rewrite=function(args,tgt,origin)
   local tpos=leadPosition(tgt,origin) local dir=(tpos-origin).Unit
@@ -365,6 +440,9 @@ local function beginTracking(part)
   S.trackTargetHum=part.Parent and part.Parent:FindFirstChildOfClass("Humanoid")
   S.trackWindow=tick()+1.5 S.oneShotWindow=tick()+3.0
 end
+-- Blox Range v2 [PART 2/2] — paste di bawah PART 1, JANGAN di file terpisah.
+
+-- Hook __namecall (FireServer) — Magic + Track trigger
 if not S.hooked and hookmetamethod and getnamecallmethod then
   S.hooked=true local old
   old=hookmetamethod(game,"__namecall",newcclosure(function(self,...)
@@ -394,6 +472,8 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
 elseif not S.hooked then
   log("Executor tidak support hookmetamethod: Magic/Track/1SK tidak bisa jalan.")
 end
+
+-- Hook __newindex — 1SK + Humanoid Monitor enforcement
 if hookmetamethod and not S.oneshotHooked then
   S.oneshotHooked=true local old
   old=hookmetamethod(game,"__newindex",newcclosure(function(self,key,value)
@@ -402,9 +482,16 @@ if hookmetamethod and not S.oneshotHooked then
         return old(self,key,0)
       end
     end
+    if not S.internalWrite and S.humanoidRef==self and S.desired[key]~=nil then
+      if not (key=="Health" and typeof(value)=="number" and value<=0) then
+        return old(self,key,S.desired[key])
+      end
+    end
     return old(self,key,value)
   end))
 end
+
+-- Detect projectile for Bullet Track
 workspace.DescendantAdded:Connect(function(inst)
   if not CFG.Track then return end
   if tick()>(S.trackWindow or 0) then return end
@@ -415,7 +502,19 @@ workspace.DescendantAdded:Connect(function(inst)
   S.trackBullets[#S.trackBullets+1]={part=inst,target=S.trackTargetPart,created=tick(),speed=CFG.TrackSpeed}
   log("Track: "..inst.Name.." ("..inst.ClassName..")")
 end)
+
+-- Heartbeat: Humanoid Monitor + Bullet Track homing
 RunService.Heartbeat:Connect(function()
+  local hum=S.humanoidRef
+  if hum and hum.Parent then
+    if next(S.desired) then applyHumanoid() end
+    for name,box in pairs(humBoxes) do
+      if not box:IsFocused() then
+        local v=hum[name]
+        if v~=nil then box.Text=tostring(math.floor(v*100)/100) end
+      end
+    end
+  end
   if #S.trackBullets==0 then return end
   local now=tick()
   for i=#S.trackBullets,1,-1 do
@@ -439,6 +538,8 @@ RunService.Heartbeat:Connect(function()
     end
   end
 end)
+
+-- Main render loop
 RunService:BindToRenderStep("BR_Main",10000,function()
   Camera=Workspace.CurrentCamera
   if not Camera then return end
@@ -454,12 +555,23 @@ RunService:BindToRenderStep("BR_Main",10000,function()
   S.magicTarget=CFG.Magic and getTarget(CFG.MagicFOV,true) or nil
   updateESP()
 end)
+
 local rmConn=Players.PlayerRemoving:Connect(clearESP)
+LP.CharacterAdded:Connect(function()
+  S.desired={}
+  S.humanoidRef=nil
+  task.wait(0.3)
+  trackHum()
+  for _,b in pairs(humBoxes) do if not b:IsFocused() then b.Text="" end end
+end)
+trackHum()
+
 G.BR_CLEANUP=function()
   S.magicOn,S.spy,S.magicTarget=false,false,nil
   S.trackBullets={} S.trackTargetHum,S.trackTargetPart=nil,nil
   S.trackWindow,S.oneShotWindow=0,0 CFG.Track,CFG.OneShot=false,false
+  S.humanoidRef=nil S.desired={} S.internalWrite=false
   pcall(function() RunService:UnbindFromRenderStep("BR_Main") end)
   rmConn:Disconnect() dragConn:Disconnect() gui:Destroy()
 end
-log("v2 loaded. Bullet Track + 1SK siap.")
+log("v2 loaded. Humanoid Monitor + Bullet Track + 1SK siap.")
