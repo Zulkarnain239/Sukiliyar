@@ -1,4 +1,4 @@
--- Blox Range v2.4 [PART 1/2] | True Godmode
+-- Blox Range v2.5 [PART 1/2] | Absolute Godmode | Instant Hit | Lobby Filter
 local newcclosure = newcclosure or function(f) return f end
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -14,10 +14,10 @@ local S = G.BR_S
 
 local CFG = {
     GodMode = false,
-    ESP = false, Chams = true, Names = false, Health = false, Lines = true,
+    ESP = false, Chams = true, Names = false, Health = false, Lines = true, OnlyArmed = true,
     Aim = false, Part = "Head", FOV = 150, Smooth = 0.35, WallCheck = true, ShowFOV = true,
     Magic = false, MagicFOV = 600, MagicLead = true, BulletSpeed = 500,
-    Track = false, OneShot = false, TrackSpeed = 700, TrackKillRadius = 8,
+    InstantHit = false, OneShot = false,
     TeleKill = false, TeleAny = false, TeleHeight = 4, TeleDelay = 0.1,
     TeamCheck = false 
 }
@@ -26,11 +26,7 @@ local BASE_FOV = math.rad(80)
 S.spy = false
 S.magicOn = false
 S.magicTarget = nil
-S.trackBullets = {}
-S.recentParts = {}
-S.trackWindow = 0
 S.oneShotWindow = 0
-S.trackTargetPart = nil
 S.trackTargetHum = nil
 S.humanoidRef = nil
 S.desired = {}
@@ -38,13 +34,22 @@ S.internalWrite = false
 S.teleTarget = nil
 S.teleNext = 0
 
+-- Cek apakah pemain memegang senjata (Tool)
+local function hasWeapon(p)
+    local ch = p.Character
+    if not ch then return false end
+    return ch:FindFirstChildOfClass("Tool") ~= nil
+end
+
 local function isEnemy(p)
     if p == LP then return false end
     if CFG.TeleAny then return true end
     if CFG.TeamCheck then
-        if LP.Team and p.Team then return LP.Team ~= p.Team end
-        return LP.TeamColor ~= p.TeamColor
+        if LP.Team and p.Team then
+            if LP.Team == p.Team then return false end
+        elseif LP.TeamColor == p.TeamColor then return false end
     end
+    if CFG.OnlyArmed and not hasWeapon(p) then return false end
     return true
 end
 
@@ -190,7 +195,7 @@ local title = Instance.new("TextLabel", main)
 title.Size = UDim2.new(1, -40, 0, 28)
 title.Position = UDim2.new(0, 8, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "Blox Range v2.4"
+title.Text = "Blox Range v2.5"
 title.TextColor3 = Color3.new(1, 1, 1)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -377,6 +382,7 @@ end)
 
 header("ESP")
 makeToggle("ESP Enemy", "ESP")
+makeToggle("Only Armed (Lobby Filter)", "OnlyArmed")
 makeToggle("Chams (Highlight)", "Chams")
 makeToggle("Line", "Lines")
 makeToggle("Nama + Jarak", "Names")
@@ -399,9 +405,8 @@ makeToggle("Magic Bullet", "Magic")
 makeStepper(function() return "Magic FOV: " .. CFG.MagicFOV end, function(d) CFG.MagicFOV = math.clamp(CFG.MagicFOV + d * 50, 50, 3000) end)
 makeToggle("Lead Compensation", "MagicLead")
 makeStepper(function() return "Bullet Speed: " .. CFG.BulletSpeed end, function(d) CFG.BulletSpeed = math.clamp(CFG.BulletSpeed + d * 50, 100, 2000) end)
-makeToggle("Bullet Track", "Track")
+makeToggle("Instant Hit", "InstantHit")
 makeToggle("1 Shot 1 Kill", "OneShot")
-makeStepper(function() return "Track Speed: " .. CFG.TrackSpeed end, function(d) CFG.TrackSpeed = math.clamp(CFG.TrackSpeed + d * 50, 100, 3000) end)
 
 header("TELEPORT KILL")
 makeToggle("Teleport to Head", "TeleKill")
@@ -431,7 +436,7 @@ Instance.new("UICorner", logBox).CornerRadius = UDim.new(0, 6)
 makeBtn("Copy Log", function() if setclipboard then setclipboard(table.concat(logLines, "\n")) log("(copied)") end end)
 
 local esp = {}
--- Blox Range v2.4 [PART 2/2]
+-- Blox Range v2.5 [PART 2/2]
 
 local function updateESP()
     local vp = Camera.ViewportSize
@@ -538,31 +543,17 @@ S.spyFn = function(name, args)
     log(name .. "(" .. table.concat(t, ", ") .. ")")
 end
 
-local function noteRecent(inst)
-    local part = inst:IsA("BasePart") and inst or (inst:IsA("Model") and inst.PrimaryPart)
-    if part then S.recentParts[#S.recentParts + 1] = {part = part, time = tick()} end
-end
-Workspace.DescendantAdded:Connect(noteRecent)
-
-local function beginTracking(part)
-    if not part then return end
-    S.trackTargetPart = part
-    S.trackTargetHum = part.Parent and part.Parent:FindFirstChildOfClass("Humanoid")
-    S.trackWindow = tick() + 1.5
-    S.oneShotWindow = tick() + 3.0
-end
-
--- Hook Namecall: Blokir Damage Godmode + Magic
+-- Hook Namecall: Absolute Godmode, Magic, Instant Hit
 if not S.hooked and hookmetamethod and getnamecallmethod then
     S.hooked = true
     local old
     old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
         local m = getnamecallmethod()
         
-        -- Godmode Total (Blokir TakeDamage & BreakJoints)
+        -- Godmode (Blokir Total TakeDamage & BreakJoints)
         if CFG.GodMode and typeof(self) == "Instance" and self == S.humanoidRef then
             if m == "TakeDamage" or m == "BreakJoints" then
-                return -- Tolak damage / hancur total
+                return 
             end
         end
         
@@ -571,19 +562,30 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
             if S.spy and S.spyFn then S.spyFn(self.Name, args) end
             
             local tgt = S.magicOn and S.magicTarget
+            if not tgt and (CFG.InstantHit or CFG.OneShot) then
+                tgt = getTarget(CFG.MagicFOV, true)
+            end
+            
+            -- Instant Hit Logic (Set HP target langsung ke 0)
+            if tgt and tgt.Parent then
+                local tHum = tgt.Parent:FindFirstChildOfClass("Humanoid")
+                if tHum and tHum.Health > 0 then
+                    if CFG.InstantHit then
+                        pcall(function() tHum.Health = 0 end)
+                    elseif CFG.OneShot then
+                        S.trackTargetHum = tHum
+                        S.oneShotWindow = tick() + 3.0
+                    end
+                end
+            end
+            
+            -- Magic Bullet Logic (Rewrite Argument)
             if tgt and tgt.Parent and S.camPos and S.rewrite and (fireNames[self.Name] or CFG.Magic) then
                 local okr, newArgs = pcall(S.rewrite, args, tgt, S.camPos)
                 if okr then
                     if setnamecallmethod then setnamecallmethod(m) end
-                    local r = old(self, table.unpack(newArgs, 1, args.n))
-                    if CFG.Track or CFG.OneShot then beginTracking(tgt) end
-                    return r
+                    return old(self, table.unpack(newArgs, 1, args.n))
                 end
-            end
-            
-            if (CFG.Track or CFG.OneShot) and not tgt then
-                local nearest = getNearestEnemyHead()
-                if nearest then beginTracking(nearest:FindFirstChild("Head") or nearest:FindFirstChild("HumanoidRootPart")) end
             end
             
             if setnamecallmethod then setnamecallmethod(m) end
@@ -593,7 +595,7 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
     end))
 end
 
--- Hook Newindex: 1SK + Mencegah HP Drop
+-- Hook Newindex: 1SK & Absolute Godmode (Blokir Health Drop)
 if hookmetamethod and not S.oneshotHooked then
     S.oneshotHooked = true
     local old
@@ -605,14 +607,12 @@ if hookmetamethod and not S.oneshotHooked then
             end
         end
         
-        -- Godmode (Diri Sendiri) - Mencegah drop darah
-        if CFG.GodMode and S.humanoidRef == self and key == "Health" then
-            if typeof(value) == "number" and value < S.humanoidRef.MaxHealth then
-                return old(self, key, S.humanoidRef.MaxHealth)
-            end
+        -- Absolute Godmode (Blokir Total Darah Berkurang)
+        if CFG.GodMode and S.humanoidRef == self and key == "Health" and not S.internalWrite then
+            return -- Batalkan penulisan, darah tidak akan tersentuh sama sekali
         end
         
-        -- Humanoid Monitor (Diri Sendiri)
+        -- Humanoid Monitor
         if not S.internalWrite and S.humanoidRef == self and S.desired[key] ~= nil then
             if not (key == "Health" and typeof(value) == "number" and value <= 0) then
                 return old(self, key, S.desired[key])
@@ -634,40 +634,11 @@ RunService.Heartbeat:Connect(function()
             end
         end
         
-        -- Godmode Aggressive Loop (Anti-Death & Anti-Fall)
+        -- Godmode Aggressive Anti-Death
         if CFG.GodMode then
-            if hum.Health < hum.MaxHealth then
-                pcall(function() hum.Health = hum.MaxHealth end)
-            end
             local state = hum:GetState()
             if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.FallingDown then
                 pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
-            end
-        end
-    end
-    
-    if #S.trackBullets > 0 then
-        local now = tick()
-        for i = #S.trackBullets, 1, -1 do
-            local tb = S.trackBullets[i]
-            local part, target = tb.part, tb.target
-            if not (part and part.Parent and target and target.Parent and (now - tb.created) < 5) then
-                table.remove(S.trackBullets, i)
-            else
-                local lead = leadPosition(target, part.Position)
-                local delta = lead - part.Position
-                if delta.Magnitude < CFG.TrackKillRadius then
-                    if CFG.OneShot and S.trackTargetHum and S.trackTargetHum.Health > 0 then
-                        pcall(function() S.trackTargetHum.Health = 0 end)
-                    end
-                    table.remove(S.trackBullets, i)
-                else
-                    local step = math.min(delta.Magnitude, tb.speed * 0.0167)
-                    pcall(function()
-                        part.CFrame = CFrame.lookAt(part.Position + delta.Unit * step, lead)
-                        part.AssemblyLinearVelocity = delta.Unit * tb.speed
-                    end)
-                end
             end
         end
     end
@@ -736,10 +707,8 @@ trackHum()
 
 G.BR_CLEANUP = function()
     S.magicOn, S.spy = false, false
-    S.trackBullets = {}
-    S.recentParts = {}
     pcall(function() RunService:UnbindFromRenderStep("BR_Main") end)
     dragConn:Disconnect()
     gui:Destroy()
 end
-log("v2.4 loaded. True Godmode Active.")
+log("v2.5 loaded. Absolute Godmode & Instant Hit Active.")
