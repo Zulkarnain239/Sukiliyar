@@ -1,4 +1,4 @@
--- Blox Range v2.6 [PART 1/2] | Perfect Godmode | Anti-Lag ESP | Lobby Filter
+-- Blox Range v2.7 [PART 1/2] | FireRifle Instant Hit | Server Godmode
 local newcclosure = newcclosure or function(f) return f end
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -33,7 +33,7 @@ S.desired = {}
 S.internalWrite = false
 S.teleTarget = nil
 S.teleNext = 0
-S.armed = {} -- Memory penyimpan waktu terakhir pegang senjata
+S.armed = {}
 
 local function isEnemy(p)
     if p == LP then return false end
@@ -44,7 +44,6 @@ local function isEnemy(p)
         elseif LP.TeamColor == p.TeamColor then return false end
     end
     if CFG.OnlyArmed then
-        -- Jika tidak punya senjata lebih dari 15 detik, bukan musuh
         if not S.armed[p] or tick() - S.armed[p] > 15 then
             return false
         end
@@ -194,7 +193,7 @@ local title = Instance.new("TextLabel", main)
 title.Size = UDim2.new(1, -40, 0, 28)
 title.Position = UDim2.new(0, 8, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "Blox Range v2.6"
+title.Text = "Blox Range v2.7"
 title.TextColor3 = Color3.new(1, 1, 1)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -326,7 +325,7 @@ local function log(s)
 end
 
 header("MISC")
-makeToggle("Godmode (Invincible)", "GodMode")
+makeToggle("Godmode (Bypass)", "GodMode")
 
 header("HUMANOID")
 local humProps = {"WalkSpeed", "JumpPower", "JumpHeight", "HipHeight", "Health", "MaxHealth"}
@@ -381,14 +380,14 @@ end)
 
 header("ESP")
 makeToggle("ESP Enemy", "ESP")
-makeToggle("Only Armed (Lobby Filter)", "OnlyArmed")
+makeToggle("Only Armed (Lobby)", "OnlyArmed")
 makeToggle("Chams (Highlight)", "Chams")
 makeToggle("Line", "Lines")
 makeToggle("Nama + Jarak", "Names")
 makeToggle("Health", "Health")
 makeToggle("Team Check", "TeamCheck")
 
-header("AIMBOT")
+header("AIMBOT & INSTANT HIT")
 makeToggle("Aimbot", "Aim")
 makeBtn("Target: Head", function(b)
     CFG.Part = (CFG.Part == "Head") and "Body" or "Head"
@@ -396,18 +395,11 @@ makeBtn("Target: Head", function(b)
 end)
 makeToggle("Wall Check", "WallCheck")
 makeStepper(function() return "FOV: " .. CFG.FOV end, function(d) CFG.FOV = math.clamp(CFG.FOV + d * 20, 30, 800) end)
-makeStepper(function() return "Speed: " .. string.format("%.2f", CFG.Smooth) end, function(d) CFG.Smooth = math.clamp(math.floor((CFG.Smooth + d * 0.05) * 100 + 0.5) / 100, 0.05, 1) end)
 makeToggle("FOV Circle", "ShowFOV", function(v) fovCircle.Visible = v end)
+makeToggle("Instant Hit (FireRifle)", "InstantHit")
 
-header("MAGIC & 1SK")
+header("MAGIC & TELEPORT")
 makeToggle("Magic Bullet", "Magic")
-makeStepper(function() return "Magic FOV: " .. CFG.MagicFOV end, function(d) CFG.MagicFOV = math.clamp(CFG.MagicFOV + d * 50, 50, 3000) end)
-makeToggle("Lead Compensation", "MagicLead")
-makeStepper(function() return "Bullet Speed: " .. CFG.BulletSpeed end, function(d) CFG.BulletSpeed = math.clamp(CFG.BulletSpeed + d * 50, 100, 2000) end)
-makeToggle("Instant Hit", "InstantHit")
-makeToggle("1 Shot 1 Kill", "OneShot")
-
-header("TELEPORT KILL")
 makeToggle("Teleport to Head", "TeleKill")
 makeToggle("Target All Players", "TeleAny")
 makeStepper(function() return "Height: " .. CFG.TeleHeight end, function(d) CFG.TeleHeight = math.clamp(CFG.TeleHeight + d, 1, 20) end)
@@ -435,7 +427,7 @@ Instance.new("UICorner", logBox).CornerRadius = UDim.new(0, 6)
 makeBtn("Copy Log", function() if setclipboard then setclipboard(table.concat(logLines, "\n")) log("(copied)") end end)
 
 local esp = {}
--- Blox Range v2.6 [PART 2/2]
+-- Blox Range v2.7 [PART 2/2]
 
 local function updateESP()
     local vp = Camera.ViewportSize
@@ -503,7 +495,6 @@ local function updateESP()
                         e.ln.Visible = false
                     end
                 else
-                    -- Anti-Lag: Jangan sembunyikan ESP jika karakter sedang loading (ch == nil)
                     if not ch or (hum and hum.Health <= 0) then
                         e.hl.Enabled = false
                         e.bb.Enabled = false
@@ -519,59 +510,28 @@ local function updateESP()
     end
 end
 
-local fireNames = {FireRifle = true, FirePistol = true, FireSniper = true, FireLMG = true, FireRocket = true}
-
-S.rewrite = function(args, tgt, origin)
-    local tpos = leadPosition(tgt, origin)
-    local dir = (tpos - origin).Unit
-    local function fix(v, depth)
-        local t = typeof(v)
-        if t == "Vector3" then
-            if v.Magnitude > 0.9 and v.Magnitude < 1.1 then return dir
-            elseif (v - origin).Magnitude > 15 then return tpos end
-            return v
-        elseif t == "CFrame" then
-            if (v.Position - origin).Magnitude > 15 then return CFrame.new(tpos) end
-            return CFrame.lookAt(v.Position, v.Position + dir)
-        elseif t == "table" and depth < 2 then
-            local n = {}
-            for k, x in pairs(v) do n[k] = fix(x, depth + 1) end
-            return n
-        end
-        return v
-    end
-    local out = {}
-    for i = 1, args.n do out[i] = fix(args[i], 0) end
-    return out
-end
-
-S.spyFn = function(name, args)
-    local t = {}
-    for i = 1, args.n do t[i] = tostring(args[i]) end
-    log(name .. "(" .. table.concat(t, ", ") .. ")")
-end
-
--- HOOK __index (Membuat game buta jika darah kita turun)
+-- HOOK __index (Client Blindness / Fake HP)
 if hookmetamethod and not S.indexHooked then
     S.indexHooked = true
     local old
     old = hookmetamethod(game, "__index", newcclosure(function(self, key)
         if CFG.GodMode and S.humanoidRef == self then
             if key == "Health" then
-                return self.MaxHealth -- Selalu bilang ke game darah kita penuh
+                return self.MaxHealth 
             end
         end
         return old(self, key)
     end))
 end
 
--- HOOK __namecall (Blokir Damage & Magic)
+-- HOOK __namecall (Blokir Damage, Instant Hit FireRifle)
 if not S.hooked and hookmetamethod and getnamecallmethod then
     S.hooked = true
     local old
     old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
         local m = getnamecallmethod()
         
+        -- Godmode Server Bypass (Blokir TakeDamage)
         if CFG.GodMode and typeof(self) == "Instance" and self == S.humanoidRef then
             if m == "TakeDamage" or m == "BreakJoints" then
                 return 
@@ -580,35 +540,38 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
         
         if m == "FireServer" and typeof(self) == "Instance" then
             local args = table.pack(...)
-            if S.spy and S.spyFn then S.spyFn(self.Name, args) end
             
-            local tgt = S.magicOn and S.magicTarget
-            if not tgt and (CFG.InstantHit or CFG.OneShot) then
-                tgt = getTarget(CFG.MagicFOV, true)
-            end
-            
-            if tgt and tgt.Parent then
-                local tHum = tgt.Parent:FindFirstChildOfClass("Humanoid")
-                if tHum and tHum.Health > 0 then
-                    if CFG.InstantHit then
-                        pcall(function() tHum.Health = 0 end)
-                    elseif CFG.OneShot then
-                        S.trackTargetHum = tHum
-                        S.oneShotWindow = tick() + 3.0
+            -- INSTANT HIT (FireRifle & FireAA)
+            if (CFG.InstantHit or CFG.OneShot) and (self.Name == "FireRifle" or self.Name == "FireAA") then
+                local tgt = getTarget(CFG.MagicFOV, true)
+                if tgt and tgt.Parent then
+                    local tHum = tgt.Parent:FindFirstChildOfClass("Humanoid")
+                    if tHum and tHum.Health > 0 then
+                        -- Ubah argumen peluru agar langsung menuju target
+                        local origin = Camera.CFrame.Position
+                        local dir = (tgt.Position - origin).Unit
+                        
+                        if self.Name == "FireRifle" then
+                            args[1] = origin -- Origin asli diganti ke kamera kita
+                            args[2] = dir    -- Arah peluru
+                            args[4] = dir    -- Arah peluru (alternatif)
+                            args[5] = 9999   -- Paksa Damage jadi 9999 (Instant Kill)
+                        elseif self.Name == "FireAA" then
+                            args[2] = origin
+                            args[3] = dir
+                            args[4] = tgt.Position
+                        end
+                        
+                        if CFG.OneShot then
+                            S.trackTargetHum = tHum
+                            S.oneShotWindow = tick() + 3.0
+                        end
                     end
                 end
             end
             
-            if tgt and tgt.Parent and S.camPos and S.rewrite and (fireNames[self.Name] or CFG.Magic) then
-                local okr, newArgs = pcall(S.rewrite, args, tgt, S.camPos)
-                if okr then
-                    if setnamecallmethod then setnamecallmethod(m) end
-                    return old(self, table.unpack(newArgs, 1, args.n))
-                end
-            end
-            
             if setnamecallmethod then setnamecallmethod(m) end
-            return old(self, ...)
+            return old(self, table.unpack(args, 1, args.n))
         end
         return old(self, ...)
     end))
@@ -627,7 +590,7 @@ if hookmetamethod and not S.oneshotHooked then
         
         if CFG.GodMode and S.humanoidRef == self and key == "Health" and not S.internalWrite then
             if typeof(value) == "number" and value < self.MaxHealth then
-                return old(self, key, self.MaxHealth) -- Paksa darah tetap Max
+                return old(self, key, self.MaxHealth) 
             end
         end
         
@@ -643,19 +606,20 @@ end
 
 -- Heartbeat Loop
 RunService.Heartbeat:Connect(function()
-    -- 1. Memory System (Deteksi Pemegang Senjata)
+    -- Memory System (Pemegang Senjata)
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP then
             local ch = p.Character
-            if ch and ch:FindFirstChildOfClass("Tool") then
-                S.armed[p] = tick()
-            elseif p.Backpack and p.Backpack:FindFirstChildOfClass("Tool") then
+            local hasTool = false
+            if ch and ch:FindFirstChildOfClass("Tool") then hasTool = true end
+            if not hasTool and p.Backpack and p.Backpack:FindFirstChildOfClass("Tool") then hasTool = true end
+            
+            if hasTool then
                 S.armed[p] = tick()
             end
         end
     end
     
-    -- 2. Humanoid Check
     local hum = S.humanoidRef
     if hum and hum.Parent then
         if next(S.desired) then applyHumanoid() end
@@ -674,7 +638,6 @@ RunService.Heartbeat:Connect(function()
         end
     end
     
-    -- 3. Teleport Kill
     if CFG.TeleKill then
         local myChar = LP.Character
         local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -720,9 +683,6 @@ RunService:BindToRenderStep("BR_Main", 10000, function()
         if t then Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(S.camPos, t.Position), CFG.Smooth) end
     end
     
-    S.magicOn = CFG.Magic
-    S.magicTarget = CFG.Magic and getTarget(CFG.MagicFOV, true) or nil
-    
     updateESP()
 end)
 
@@ -744,4 +704,4 @@ G.BR_CLEANUP = function()
     dragConn:Disconnect()
     gui:Destroy()
 end
-log("v2.6 loaded. Perfect Godmode & Anti-Lag ESP Active.")
+log("v2.7 loaded. FireRifle Instant Hit Active.")
