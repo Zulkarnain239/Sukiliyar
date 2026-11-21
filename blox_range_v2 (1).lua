@@ -1,4 +1,4 @@
--- Blox Range v2.5 [PART 1/2] | Absolute Godmode | Instant Hit | Lobby Filter
+-- Blox Range v2.6 [PART 1/2] | Perfect Godmode | Anti-Lag ESP | Lobby Filter
 local newcclosure = newcclosure or function(f) return f end
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -33,13 +33,7 @@ S.desired = {}
 S.internalWrite = false
 S.teleTarget = nil
 S.teleNext = 0
-
--- Cek apakah pemain memegang senjata (Tool)
-local function hasWeapon(p)
-    local ch = p.Character
-    if not ch then return false end
-    return ch:FindFirstChildOfClass("Tool") ~= nil
-end
+S.armed = {} -- Memory penyimpan waktu terakhir pegang senjata
 
 local function isEnemy(p)
     if p == LP then return false end
@@ -49,7 +43,12 @@ local function isEnemy(p)
             if LP.Team == p.Team then return false end
         elseif LP.TeamColor == p.TeamColor then return false end
     end
-    if CFG.OnlyArmed and not hasWeapon(p) then return false end
+    if CFG.OnlyArmed then
+        -- Jika tidak punya senjata lebih dari 15 detik, bukan musuh
+        if not S.armed[p] or tick() - S.armed[p] > 15 then
+            return false
+        end
+    end
     return true
 end
 
@@ -195,7 +194,7 @@ local title = Instance.new("TextLabel", main)
 title.Size = UDim2.new(1, -40, 0, 28)
 title.Position = UDim2.new(0, 8, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "Blox Range v2.5"
+title.Text = "Blox Range v2.6"
 title.TextColor3 = Color3.new(1, 1, 1)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -436,7 +435,7 @@ Instance.new("UICorner", logBox).CornerRadius = UDim.new(0, 6)
 makeBtn("Copy Log", function() if setclipboard then setclipboard(table.concat(logLines, "\n")) log("(copied)") end end)
 
 local esp = {}
--- Blox Range v2.5 [PART 2/2]
+-- Blox Range v2.6 [PART 2/2]
 
 local function updateESP()
     local vp = Camera.ViewportSize
@@ -480,27 +479,36 @@ local function updateESP()
             local hum = ch and ch:FindFirstChildOfClass("Humanoid")
             local root = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Head"))
             
-            if ch and root and hum and hum.Health > 0 and isEnemy(p) and CFG.ESP then
-                if e.hl.Adornee ~= ch then e.hl.Adornee = ch end
-                if e.bb.Adornee ~= root then e.bb.Adornee = root end
-                e.hl.Enabled = CFG.Chams
-                
-                local parts = {}
-                if CFG.Names then parts[#parts + 1] = string.format("%s [%d]", p.Name, (Camera.CFrame.Position - root.Position).Magnitude) end
-                if CFG.Health then parts[#parts + 1] = math.floor(hum.Health) .. "HP" end
-                e.bb.Enabled = #parts > 0
-                e.lb.Text = table.concat(parts, " ")
-                
-                local sp = Camera:WorldToViewportPoint(root.Position)
-                if CFG.Lines and sp.Z > 0 then
-                    local to = Vector2.new(sp.X, sp.Y)
-                    local d = to - from
-                    e.ln.Visible = true
-                    e.ln.Position = UDim2.fromOffset((from.X + to.X) / 2, (from.Y + to.Y) / 2)
-                    e.ln.Size = UDim2.fromOffset(d.Magnitude, 2)
-                    e.ln.Rotation = math.deg(math.atan2(d.Y, d.X))
+            if CFG.ESP and isEnemy(p) then
+                if ch and root and hum and hum.Health > 0 then
+                    if e.hl.Adornee ~= ch then e.hl.Adornee = ch end
+                    if e.bb.Adornee ~= root then e.bb.Adornee = root end
+                    e.hl.Enabled = CFG.Chams
+                    
+                    local parts = {}
+                    if CFG.Names then parts[#parts + 1] = string.format("%s [%d]", p.Name, (Camera.CFrame.Position - root.Position).Magnitude) end
+                    if CFG.Health then parts[#parts + 1] = math.floor(hum.Health) .. "HP" end
+                    e.bb.Enabled = #parts > 0
+                    e.lb.Text = table.concat(parts, " ")
+                    
+                    local sp = Camera:WorldToViewportPoint(root.Position)
+                    if CFG.Lines and sp.Z > 0 then
+                        local to = Vector2.new(sp.X, sp.Y)
+                        local d = to - from
+                        e.ln.Visible = true
+                        e.ln.Position = UDim2.fromOffset((from.X + to.X) / 2, (from.Y + to.Y) / 2)
+                        e.ln.Size = UDim2.fromOffset(d.Magnitude, 2)
+                        e.ln.Rotation = math.deg(math.atan2(d.Y, d.X))
+                    else
+                        e.ln.Visible = false
+                    end
                 else
-                    e.ln.Visible = false
+                    -- Anti-Lag: Jangan sembunyikan ESP jika karakter sedang loading (ch == nil)
+                    if not ch or (hum and hum.Health <= 0) then
+                        e.hl.Enabled = false
+                        e.bb.Enabled = false
+                        e.ln.Visible = false
+                    end
                 end
             else
                 e.hl.Enabled = false
@@ -543,14 +551,27 @@ S.spyFn = function(name, args)
     log(name .. "(" .. table.concat(t, ", ") .. ")")
 end
 
--- Hook Namecall: Absolute Godmode, Magic, Instant Hit
+-- HOOK __index (Membuat game buta jika darah kita turun)
+if hookmetamethod and not S.indexHooked then
+    S.indexHooked = true
+    local old
+    old = hookmetamethod(game, "__index", newcclosure(function(self, key)
+        if CFG.GodMode and S.humanoidRef == self then
+            if key == "Health" then
+                return self.MaxHealth -- Selalu bilang ke game darah kita penuh
+            end
+        end
+        return old(self, key)
+    end))
+end
+
+-- HOOK __namecall (Blokir Damage & Magic)
 if not S.hooked and hookmetamethod and getnamecallmethod then
     S.hooked = true
     local old
     old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
         local m = getnamecallmethod()
         
-        -- Godmode (Blokir Total TakeDamage & BreakJoints)
         if CFG.GodMode and typeof(self) == "Instance" and self == S.humanoidRef then
             if m == "TakeDamage" or m == "BreakJoints" then
                 return 
@@ -566,7 +587,6 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
                 tgt = getTarget(CFG.MagicFOV, true)
             end
             
-            -- Instant Hit Logic (Set HP target langsung ke 0)
             if tgt and tgt.Parent then
                 local tHum = tgt.Parent:FindFirstChildOfClass("Humanoid")
                 if tHum and tHum.Health > 0 then
@@ -579,7 +599,6 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
                 end
             end
             
-            -- Magic Bullet Logic (Rewrite Argument)
             if tgt and tgt.Parent and S.camPos and S.rewrite and (fireNames[self.Name] or CFG.Magic) then
                 local okr, newArgs = pcall(S.rewrite, args, tgt, S.camPos)
                 if okr then
@@ -595,24 +614,23 @@ if not S.hooked and hookmetamethod and getnamecallmethod then
     end))
 end
 
--- Hook Newindex: 1SK & Absolute Godmode (Blokir Health Drop)
+-- HOOK __newindex (Blokir Drop HP & 1SK)
 if hookmetamethod and not S.oneshotHooked then
     S.oneshotHooked = true
     local old
     old = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
-        -- 1 Shot 1 Kill (Musuh)
         if CFG.OneShot and S.trackTargetHum == self and key == "Health" then
             if typeof(value) == "number" and value > 0 and tick() < (S.oneShotWindow or 0) then
                 return old(self, key, 0)
             end
         end
         
-        -- Absolute Godmode (Blokir Total Darah Berkurang)
         if CFG.GodMode and S.humanoidRef == self and key == "Health" and not S.internalWrite then
-            return -- Batalkan penulisan, darah tidak akan tersentuh sama sekali
+            if typeof(value) == "number" and value < self.MaxHealth then
+                return old(self, key, self.MaxHealth) -- Paksa darah tetap Max
+            end
         end
         
-        -- Humanoid Monitor
         if not S.internalWrite and S.humanoidRef == self and S.desired[key] ~= nil then
             if not (key == "Health" and typeof(value) == "number" and value <= 0) then
                 return old(self, key, S.desired[key])
@@ -623,7 +641,21 @@ if hookmetamethod and not S.oneshotHooked then
     end))
 end
 
+-- Heartbeat Loop
 RunService.Heartbeat:Connect(function()
+    -- 1. Memory System (Deteksi Pemegang Senjata)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP then
+            local ch = p.Character
+            if ch and ch:FindFirstChildOfClass("Tool") then
+                S.armed[p] = tick()
+            elseif p.Backpack and p.Backpack:FindFirstChildOfClass("Tool") then
+                S.armed[p] = tick()
+            end
+        end
+    end
+    
+    -- 2. Humanoid Check
     local hum = S.humanoidRef
     if hum and hum.Parent then
         if next(S.desired) then applyHumanoid() end
@@ -634,7 +666,6 @@ RunService.Heartbeat:Connect(function()
             end
         end
         
-        -- Godmode Aggressive Anti-Death
         if CFG.GodMode then
             local state = hum:GetState()
             if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.FallingDown then
@@ -643,6 +674,7 @@ RunService.Heartbeat:Connect(function()
         end
     end
     
+    -- 3. Teleport Kill
     if CFG.TeleKill then
         local myChar = LP.Character
         local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -673,6 +705,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+-- Render Step (Aimbot, ESP, FOV)
 RunService:BindToRenderStep("BR_Main", 10000, function()
     Camera = Workspace.CurrentCamera
     if not Camera then return end
@@ -711,4 +744,4 @@ G.BR_CLEANUP = function()
     dragConn:Disconnect()
     gui:Destroy()
 end
-log("v2.5 loaded. Absolute Godmode & Instant Hit Active.")
+log("v2.6 loaded. Perfect Godmode & Anti-Lag ESP Active.")
